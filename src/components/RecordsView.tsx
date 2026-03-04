@@ -25,35 +25,58 @@ export function RecordsView() {
   const [appointments, setAppointments] = useState<AppointmentWithNames[]>([]);
   const [billings, setBillings] = useState<BillingWithDetails[]>([]);
   const [loading, setLoading] = useState(false);
+  const [patientSearch, setPatientSearch] = useState('');
+  const [doctorSpecFilter, setDoctorSpecFilter] = useState('');
+  const [appointmentStatusFilter, setAppointmentStatusFilter] = useState('');
+  const [allDoctorSpecs, setAllDoctorSpecs] = useState<string[]>([]);
 
   useEffect(() => {
     fetchRecords();
-  }, [activeView]);
+  }, [activeView, patientSearch, doctorSpecFilter, appointmentStatusFilter]);
 
   const fetchRecords = async () => {
     setLoading(true);
     try {
       if (activeView === 'patients') {
-        const { data } = await supabase
+        let query = supabase
           .from('patients')
-          .select('*')
-          .order('created_at', { ascending: false });
+          .select('*');
+
+        if (patientSearch) {
+          query = query.ilike('full_name', `%${patientSearch}%`);
+        }
+
+        const { data } = await query.order('created_at', { ascending: false });
         if (data) setPatients(data);
       } else if (activeView === 'doctors') {
-        const { data } = await supabase
+        let query = supabase
           .from('doctors')
-          .select('*')
-          .order('created_at', { ascending: false });
-        if (data) setDoctors(data);
+          .select('*');
+
+        if (doctorSpecFilter) {
+          query = query.eq('specialization', doctorSpecFilter);
+        }
+
+        const { data } = await query.order('created_at', { ascending: false });
+        if (data) {
+          setDoctors(data);
+          const specs = [...new Set(data.map(d => d.specialization))];
+          setAllDoctorSpecs(specs);
+        }
       } else if (activeView === 'appointments') {
-        const { data } = await supabase
+        let query = supabase
           .from('appointments')
           .select(`
             *,
             patients(full_name),
             doctors(full_name, specialization)
-          `)
-          .order('appointment_date', { ascending: false });
+          `);
+
+        if (appointmentStatusFilter) {
+          query = query.eq('status', appointmentStatusFilter);
+        }
+
+        const { data } = await query.order('appointment_date', { ascending: false });
         if (data) setAppointments(data);
       } else if (activeView === 'billing') {
         const { data } = await supabase
@@ -127,6 +150,50 @@ export function RecordsView() {
         </button>
       </div>
 
+      {activeView === 'patients' && (
+        <div className="mb-4">
+          <input
+            type="text"
+            placeholder="Search by patient name..."
+            value={patientSearch}
+            onChange={(e) => setPatientSearch(e.target.value)}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          />
+        </div>
+      )}
+
+      {activeView === 'doctors' && (
+        <div className="mb-4">
+          <select
+            value={doctorSpecFilter}
+            onChange={(e) => setDoctorSpecFilter(e.target.value)}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent"
+          >
+            <option value="">All Specializations</option>
+            {allDoctorSpecs.map((spec) => (
+              <option key={spec} value={spec}>
+                {spec}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {activeView === 'appointments' && (
+        <div className="mb-4">
+          <select
+            value={appointmentStatusFilter}
+            onChange={(e) => setAppointmentStatusFilter(e.target.value)}
+            className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+          >
+            <option value="">All Statuses</option>
+            <option value="scheduled">Scheduled</option>
+            <option value="completed">Completed</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </div>
+      )}
+
       {loading ? (
         <div className="text-center py-8 text-gray-500">Loading...</div>
       ) : (
@@ -146,7 +213,7 @@ export function RecordsView() {
                 {patients.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="px-4 py-8 text-center text-gray-500">
-                      No patients registered yet
+                      No patients found
                     </td>
                   </tr>
                 ) : (
